@@ -1,8 +1,0 @@
-
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Diyanet Akademisi Sayacı</string>
-    <string name="widget_title">Akademi Geri Sayım</string>
-    <string name="widget_days">KALAN GÜN</string>
-    <string name="set_date">Bitiş Tarihini Ayarla</string>
-</resources>
