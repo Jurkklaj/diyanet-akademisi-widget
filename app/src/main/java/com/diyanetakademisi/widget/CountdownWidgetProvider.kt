@@ -1,13 +1,18 @@
-
 package com.diyanetakademisi.widget
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.os.SystemClock
 import android.widget.RemoteViews
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 
 class CountdownWidgetProvider : AppWidgetProvider() {
 
@@ -19,9 +24,31 @@ class CountdownWidgetProvider : AppWidgetProvider() {
         for (id in appWidgetIds) {
             updateWidget(context, manager, id)
         }
+        scheduleNextUpdate(context)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+
+        if (intent.action == ACTION_REFRESH) {
+            updateAll(context)
+            scheduleNextUpdate(context)
+        }
+    }
+
+    override fun onEnabled(context: Context) {
+        scheduleNextUpdate(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        val alarmManager =
+            context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.cancel(refreshPendingIntent(context))
     }
 
     companion object {
+        private const val ACTION_REFRESH =
+            "com.diyanetakademisi.widget.REFRESH_COUNTDOWN"
 
         fun updateAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
@@ -34,6 +61,7 @@ class CountdownWidgetProvider : AppWidgetProvider() {
             for (id in ids) {
                 updateWidget(context, manager, id)
             }
+            scheduleNextUpdate(context)
         }
 
         private fun updateWidget(
@@ -57,27 +85,67 @@ class CountdownWidgetProvider : AppWidgetProvider() {
                 views.setTextViewText(R.id.widget_days, "—")
                 views.setTextViewText(
                     R.id.widget_subtitle,
-                    "TARİH SEÇ"
+                    "UYGULAMADAN TARİH SEÇ"
                 )
             } else {
-                val target = LocalDate.parse(savedDate)
-                val today = LocalDate.now()
-                val days = ChronoUnit.DAYS.between(today, target)
+                val targetDate = LocalDate.parse(savedDate)
+                    .plusDays(1)
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
 
-                views.setTextViewText(
-                    R.id.widget_days,
-                    days.coerceAtLeast(0).toString()
-                )
+                val seconds = Duration.between(
+                    Instant.now(), targetDate
+                ).seconds
 
-                views.setTextViewText(
-                    R.id.widget_subtitle,
-                    if (days > 0) "GÜN KALDI"
-                    else if (days == 0L) "BUGÜN SON GÜN"
-                    else "SÜRE DOLDU"
-                )
+                if (seconds <= 0) {
+                    views.setTextViewText(R.id.widget_days, "0")
+                    views.setTextViewText(
+                        R.id.widget_subtitle, "SÜRE DOLDU"
+                    )
+                } else {
+                    val days = seconds / 86400
+                    val hours = (seconds % 86400) / 3600
+                    val minutes = (seconds % 3600) / 60
+
+                    views.setTextViewText(
+                        R.id.widget_days,
+                        "${days}g ${hours}s"
+                    )
+                    views.setTextViewText(
+                        R.id.widget_subtitle,
+                        "${minutes} dakika kaldı"
+                    )
+                }
             }
 
             manager.updateAppWidget(id, views)
+        }
+
+        private fun scheduleNextUpdate(context: Context) {
+            val manager =
+                context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+            val pendingIntent = refreshPendingIntent(context)
+            manager.setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME,
+                SystemClock.elapsedRealtime() + 60_000,
+                pendingIntent
+            )
+        }
+
+        private fun refreshPendingIntent(
+            context: Context
+        ): PendingIntent {
+            val intent = Intent(context, CountdownWidgetProvider::class.java)
+                .setAction(ACTION_REFRESH)
+
+            return PendingIntent.getBroadcast(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or
+                    PendingIntent.FLAG_IMMUTABLE
+            )
         }
     }
 }
